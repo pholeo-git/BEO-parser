@@ -7,7 +7,6 @@ const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
     'Authorization': `Bearer ${API_KEY}`,
-    'Content-Type': 'application/json',
   },
 });
 
@@ -58,6 +57,8 @@ export async function uploadSubmission(
         'Content-Type': 'multipart/form-data',
         'Authorization': `Bearer ${API_KEY}`,
       },
+      // Let axios set Content-Type with boundary for multipart
+      transformRequest: [(data) => data],
     }
   );
 
@@ -72,6 +73,7 @@ export async function checkStatus(
     {
       headers: {
         'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
       },
     }
   );
