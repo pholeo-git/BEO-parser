@@ -1,6 +1,7 @@
 """Configuration settings for the BEO Separator API."""
 from pydantic_settings import BaseSettings
 from typing import Optional
+import os
 
 
 class Settings(BaseSettings):
@@ -37,6 +38,31 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        # Allow reading from environment variables with different naming
+        env_prefix = ""
 
 
-settings = Settings()
+def get_settings() -> Settings:
+    """Get settings instance with better error handling."""
+    try:
+        return Settings()
+    except Exception as e:
+        # Print helpful error message
+        required_vars = [
+            "API_SECRET_KEY",
+            "SUPABASE_URL",
+            "SUPABASE_KEY",
+            "SUPABASE_SERVICE_KEY",
+            "POSTMARK_API_KEY",
+            "POSTMARK_FROM_EMAIL",
+        ]
+        missing = [var for var in required_vars if not os.getenv(var)]
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}\n"
+                f"Original error: {str(e)}"
+            )
+        raise
+
+
+settings = get_settings()
