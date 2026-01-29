@@ -54,11 +54,9 @@ export async function uploadSubmission(
     formData,
     {
       headers: {
-        'Content-Type': 'multipart/form-data',
         'Authorization': `Bearer ${API_KEY}`,
+        // Don't set Content-Type - let axios set it with boundary for multipart/form-data
       },
-      // Let axios set Content-Type with boundary for multipart
-      transformRequest: [(data) => data],
     }
   );
 
