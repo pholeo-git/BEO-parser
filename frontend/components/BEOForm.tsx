@@ -60,13 +60,41 @@ export default function BEOForm() {
       
       if (error.response) {
         // Server responded with error
-        errorMessage = error.response.data?.detail || error.response.data?.error || error.response.statusText || errorMessage;
+        const responseData = error.response.data;
+        
+        // Handle FastAPI validation errors (422)
+        if (error.response.status === 422 && responseData?.detail) {
+          // FastAPI validation errors can be an array or a single object
+          if (Array.isArray(responseData.detail)) {
+            // Multiple validation errors
+            const errors = responseData.detail.map((err: any) => {
+              if (typeof err === 'string') return err;
+              if (err.msg) return `${err.loc?.join('.') || 'Field'}: ${err.msg}`;
+              return JSON.stringify(err);
+            });
+            errorMessage = errors.join(', ');
+          } else if (typeof responseData.detail === 'string') {
+            errorMessage = responseData.detail;
+          } else if (responseData.detail.msg) {
+            errorMessage = responseData.detail.msg;
+          } else {
+            errorMessage = JSON.stringify(responseData.detail);
+          }
+        } else {
+          // Other server errors
+          errorMessage = responseData?.detail || responseData?.error || responseData?.message || error.response.statusText || errorMessage;
+        }
       } else if (error.request) {
         // Request made but no response (network error)
         errorMessage = 'Network error: Could not reach the server. Please check your connection and try again.';
       } else {
         // Something else happened
-        errorMessage = error.message || errorMessage;
+        errorMessage = error.message || String(error) || errorMessage;
+      }
+      
+      // Ensure errorMessage is always a string
+      if (typeof errorMessage !== 'string') {
+        errorMessage = 'An unexpected error occurred. Please try again.';
       }
       
       setSubmitError(errorMessage);
