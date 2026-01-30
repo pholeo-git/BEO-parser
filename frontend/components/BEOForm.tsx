@@ -55,9 +55,21 @@ export default function BEOForm() {
       // Optionally poll for status updates
       // pollStatus(response.submission_id);
     } catch (error: any) {
-      setSubmitError(
-        error.response?.data?.detail || error.message || 'An error occurred. Please try again.'
-      );
+      console.error('Upload error:', error);
+      let errorMessage = 'An error occurred. Please try again.';
+      
+      if (error.response) {
+        // Server responded with error
+        errorMessage = error.response.data?.detail || error.response.data?.error || error.response.statusText || errorMessage;
+      } else if (error.request) {
+        // Request made but no response (network error)
+        errorMessage = 'Network error: Could not reach the server. Please check your connection and try again.';
+      } else {
+        // Something else happened
+        errorMessage = error.message || errorMessage;
+      }
+      
+      setSubmitError(errorMessage);
     } finally {
       setIsSubmitting(false);
     }

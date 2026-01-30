@@ -49,6 +49,9 @@ export async function uploadSubmission(
   }
   formData.append('pdf_file', data.pdf_file);
 
+  console.log('Uploading to:', API_URL);
+  console.log('API Key set:', !!API_KEY);
+
   const response = await apiClient.post<UploadResponse>(
     '/api/upload',
     formData,
@@ -57,6 +60,7 @@ export async function uploadSubmission(
         'Authorization': `Bearer ${API_KEY}`,
         // Don't set Content-Type - let axios set it with boundary for multipart/form-data
       },
+      timeout: 60000, // 60 second timeout for large files
     }
   );
 
