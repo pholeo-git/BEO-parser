@@ -2,13 +2,14 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from uuid import UUID
+from typing import Optional
 
 from app.models.submission import SubmissionResponse
 from app.services.database import db_service
 from app.core.config import settings
 
 router = APIRouter()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def verify_api_key(credentials: HTTPAuthorizationCredentials):
@@ -21,13 +22,15 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials):
 @router.get("/status/{submission_id}", response_model=SubmissionResponse)
 async def get_status(
     submission_id: UUID,
-    authorization: HTTPAuthorizationCredentials = security,
+    authorization: Optional[HTTPAuthorizationCredentials] = security,
 ):
     """
     Get the status of a submission.
     Requires API key in Authorization header.
     """
     # Verify API key
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     verify_api_key(authorization)
     
     # Get submission from database

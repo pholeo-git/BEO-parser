@@ -12,7 +12,7 @@ from app.services.pdf_processor import process_pdf_async
 from app.core.config import settings
 
 router = APIRouter()
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Simple in-memory rate limiting (for production, use Redis)
 _rate_limit_store: Dict[str, list] = {}
@@ -54,13 +54,15 @@ async def upload_file(
     email: str = Form(...),
     event_name: Optional[str] = Form(None),
     pdf_file: UploadFile = File(...),
-    authorization: HTTPAuthorizationCredentials = security,
+    authorization: Optional[HTTPAuthorizationCredentials] = security,
 ):
     """
     Upload a PDF file for processing.
     Requires API key in Authorization header.
     """
     # Verify API key
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization header")
     verify_api_key(authorization)
     
     # Check rate limit
