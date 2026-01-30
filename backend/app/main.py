@@ -15,9 +15,19 @@ app = FastAPI(
 
 # Configure CORS
 origins = [origin.strip() for origin in settings.cors_origins.split(",")]
+
+def is_origin_allowed(origin: str) -> bool:
+    """Check if origin is allowed (explicit list or vercel.app domain)."""
+    if origin in origins:
+        return True
+    # Allow all vercel.app subdomains (for preview deployments)
+    if origin.endswith('.vercel.app'):
+        return True
+    return False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?|https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
