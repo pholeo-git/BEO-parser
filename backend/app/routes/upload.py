@@ -49,21 +49,29 @@ def check_rate_limit(email: str) -> bool:
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
+    request: Request,
     background_tasks: BackgroundTasks,
     name: str = Form(...),
     email: str = Form(...),
     event_name: Optional[str] = Form(None),
     pdf_file: UploadFile = File(...),
-    authorization: Optional[HTTPAuthorizationCredentials] = security,
 ):
     """
     Upload a PDF file for processing.
     Requires API key in Authorization header.
     """
-    # Verify API key
-    if not authorization:
+    # Get authorization from header (not from form data)
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
         raise HTTPException(status_code=401, detail="Missing Authorization header")
-    verify_api_key(authorization)
+    
+    # Extract Bearer token
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Invalid Authorization header format")
+    
+    token = auth_header.replace("Bearer ", "").strip()
+    if token != settings.api_secret_key:
+        raise HTTPException(status_code=401, detail="Invalid API key")
     
     # Check rate limit
     if not check_rate_limit(email):
