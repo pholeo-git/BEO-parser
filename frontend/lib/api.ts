@@ -3,6 +3,15 @@ import axios from 'axios';
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 const API_KEY = process.env.NEXT_PUBLIC_API_KEY || '';
 
+// Log for debugging (will show in browser console)
+if (typeof window !== 'undefined') {
+  console.log('API Configuration:', {
+    API_URL,
+    API_KEY_SET: !!API_KEY,
+    API_KEY_LENGTH: API_KEY?.length || 0,
+  });
+}
+
 const apiClient = axios.create({
   baseURL: API_URL,
   headers: {
