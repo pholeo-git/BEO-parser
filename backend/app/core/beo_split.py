@@ -8,10 +8,11 @@ from typing import Dict, List, Optional, Set, Tuple
 import fitz  # PyMuPDF
 
 
-# Prefer the canonical label used on BEOs: "BEO #: 35325"
+# Prefer the canonical label used on BEOs: "BEO #: 35325" or "Banquet Event Order: 00201291"
 # Many packets also contain mid-page notes like "Reference BEO# 37057" (no colon),
 # which should NOT cause ambiguity. So we prioritize the colon form, especially in
 # header/footer regions.
+BEO_BANQUET_ORDER_RE = re.compile(r"\bBanquet\s+Event\s+Order\s*:\s*(\d{3,})\b", re.IGNORECASE)
 BEO_COLON_RE = re.compile(r"\bBEO\s*#\s*:\s*(\d{3,})\b", re.IGNORECASE)
 BEO_LOOSE_RE = re.compile(r"\bBEO\s*#?\s*:?\s*(\d{3,})\b", re.IGNORECASE)
 
@@ -87,28 +88,42 @@ def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str,
     hf_text = _extract_header_footer_text(page)
     full_text = _extract_all_text(page)
 
-    # 1) Strongest signal: colon form in header/footer.
+    # 1) Strongest signal: "Banquet Event Order:" in header/footer (common format).
+    m = _matches_from_text(BEO_BANQUET_ORDER_RE, hf_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+
+    # 2) "Banquet Event Order:" anywhere on page.
+    m = _matches_from_text(BEO_BANQUET_ORDER_RE, full_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+
+    # 3) "BEO #:" colon form in header/footer.
     m = _matches_from_text(BEO_COLON_RE, hf_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 2) Colon form anywhere on page (handles layouts where header/footer blocks aren't detected cleanly).
+    # 4) "BEO #:" colon form anywhere on page (handles layouts where header/footer blocks aren't detected cleanly).
     m = _matches_from_text(BEO_COLON_RE, full_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 3) Fallback: loose match in header/footer (rare templates without colon).
+    # 5) Fallback: loose "BEO #" match in header/footer (rare templates without colon).
     m = _matches_from_text(BEO_LOOSE_RE, hf_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 4) Last resort: loose match on page, but ignore lines that look like references/notes.
+    # 6) Last resort: loose match on page, but ignore lines that look like references/notes.
     #    This keeps verification strict while supporting occasional template variations.
     candidates: Set[str] = set()
     for line in (full_text or "").splitlines():
