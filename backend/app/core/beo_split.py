@@ -272,20 +272,53 @@ def run_ocr_if_needed(input_pdf: str, outdir: str) -> Optional[str]:
     """
     ocrmypdf = shutil.which("ocrmypdf")
     if not ocrmypdf:
+        # Log that OCR is not available
+        log_path = os.path.join(outdir, "ocrmypdf.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("ERROR: ocrmypdf not found in PATH. OCR cannot be performed.\n")
+            f.write("Please ensure ocrmypdf and tesseract-ocr are installed.\n")
         return None
+    
     ocr_out = os.path.join(outdir, "input_ocr.pdf")
     cmd = [
         ocrmypdf,
-        "--force-ocr",
-        "--skip-text",  # keep existing text, OCR images only when possible
+        "--force-ocr",  # Force OCR even if text layer exists
+        "--deskew",  # Deskew pages
+        "--clean",  # Clean up artifacts
         input_pdf,
         ocr_out,
     ]
     try:
-        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        result = subprocess.run(
+            cmd, 
+            check=True, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.STDOUT, 
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        # Log successful OCR
+        log_path = os.path.join(outdir, "ocrmypdf.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("OCR completed successfully.\n")
+            if result.stdout:
+                f.write(f"Output: {result.stdout}\n")
+        return ocr_out
+    except subprocess.TimeoutExpired:
+        log_path = os.path.join(outdir, "ocrmypdf.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write("ERROR: OCR timed out after 5 minutes.\n")
+        return None
     except subprocess.CalledProcessError as e:
         # Save OCR output log for troubleshooting.
-        with open(os.path.join(outdir, "ocrmypdf.log"), "w", encoding="utf-8") as f:
-            f.write(e.stdout or "")
+        log_path = os.path.join(outdir, "ocrmypdf.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"ERROR: OCR failed with exit code {e.returncode}\n")
+            if e.stdout:
+                f.write(f"Output: {e.stdout}\n")
         return None
-    return ocr_out
+    except Exception as e:
+        log_path = os.path.join(outdir, "ocrmypdf.log")
+        with open(log_path, "w", encoding="utf-8") as f:
+            f.write(f"ERROR: Unexpected error during OCR: {str(e)}\n")
+        return None

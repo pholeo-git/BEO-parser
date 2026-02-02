@@ -41,17 +41,27 @@ async def process_pdf_async(
             stop_on_problems=False,  # Don't stop, just log problems
         )
         
-        # If no BEOs were extracted and there were problem pages, try OCR for scanned PDFs
-        if num_beos == 0 and problem_pages > 0:
+        # If no BEOs were extracted, try OCR for scanned PDFs
+        # This handles cases where the PDF is scanned and has no extractable text
+        if num_beos == 0:
             from app.core.beo_split import run_ocr_if_needed
             ocr_pdf = run_ocr_if_needed(pdf_file_path, temp_dir)
             if ocr_pdf:
-                # Retry with OCR'd PDF
+                # Retry with OCR'd PDF - use a fresh output directory to avoid conflicts
+                ocr_output_dir = os.path.join(temp_dir, "output_ocr")
+                os.makedirs(ocr_output_dir, exist_ok=True)
                 num_beos, problem_pages, report_path = split_pdf(
                     input_pdf=ocr_pdf,
-                    outdir=output_dir,
+                    outdir=ocr_output_dir,
                     stop_on_problems=False,
                 )
+                # Move OCR'd results to main output directory
+                if os.path.exists(ocr_output_dir):
+                    for file in os.listdir(ocr_output_dir):
+                        src = os.path.join(ocr_output_dir, file)
+                        dst = os.path.join(output_dir, file)
+                        if os.path.isfile(src):
+                            shutil.move(src, dst)
         
         # Create zip file
         zip_path = os.path.join(temp_dir, f"beos_{submission_id}.zip")
