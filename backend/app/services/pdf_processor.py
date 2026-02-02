@@ -44,9 +44,9 @@ async def process_pdf_async(
         # Create zip file
         zip_path = os.path.join(temp_dir, f"beos_{submission_id}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Add all BEO PDFs
+            # Add all BEO/BC PDFs (both prefixes)
             for file in os.listdir(output_dir):
-                if file.endswith('.pdf') and file.startswith('BEO_'):
+                if file.endswith('.pdf') and (file.startswith('BEO_') or file.startswith('BC_')):
                     file_path = os.path.join(output_dir, file)
                     zipf.write(file_path, file)
             

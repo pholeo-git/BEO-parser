@@ -12,8 +12,10 @@ import fitz  # PyMuPDF
 # Many packets also contain mid-page notes like "Reference BEO# 37057" (no colon),
 # which should NOT cause ambiguity. So we prioritize the colon form, especially in
 # header/footer regions.
+# Banquet Checks often use "BEO#:" (no space between BEO and #)
 BEO_BANQUET_ORDER_RE = re.compile(r"\bBanquet\s+Event\s+Order\s*:\s*(\d{3,})\b", re.IGNORECASE)
-BEO_COLON_RE = re.compile(r"\bBEO\s*#\s*:\s*(\d{3,})\b", re.IGNORECASE)
+BEO_HASH_NO_SPACE_RE = re.compile(r"\bBEO#\s*:\s*(\d{3,})\b", re.IGNORECASE)  # "BEO#:" no space (Banquet Checks)
+BEO_COLON_RE = re.compile(r"\bBEO\s*#\s*:\s*(\d{3,})\b", re.IGNORECASE)  # "BEO #:" with space
 BEO_LOOSE_RE = re.compile(r"\bBEO\s*#?\s*:?\s*(\d{3,})\b", re.IGNORECASE)
 
 REFERENCE_LINE_HINTS = (
@@ -77,6 +79,13 @@ def _matches_from_text(regex: "re.Pattern[str]", text: str) -> Set[str]:
     return set(regex.findall(text or ""))
 
 
+def _is_banquet_check(page: "fitz.Page") -> bool:
+    """Detect if this page is a Banquet Check (vs regular BEO)."""
+    full_text = _extract_all_text(page).upper()
+    # Look for "Banquet Check" text which appears on Banquet Checks
+    return "BANQUET CHECK" in full_text or "BANQUETCHECK" in full_text.replace(" ", "")
+
+
 def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str, Set[str]]:
     """
     Returns (beo, status, matches).
@@ -102,28 +111,42 @@ def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str,
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 3) "BEO #:" colon form in header/footer.
+    # 3) "BEO#:" (no space) in header/footer - common in Banquet Checks.
+    m = _matches_from_text(BEO_HASH_NO_SPACE_RE, hf_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+
+    # 4) "BEO#:" (no space) anywhere on page.
+    m = _matches_from_text(BEO_HASH_NO_SPACE_RE, full_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+
+    # 5) "BEO #:" colon form in header/footer.
     m = _matches_from_text(BEO_COLON_RE, hf_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 4) "BEO #:" colon form anywhere on page (handles layouts where header/footer blocks aren't detected cleanly).
+    # 6) "BEO #:" colon form anywhere on page (handles layouts where header/footer blocks aren't detected cleanly).
     m = _matches_from_text(BEO_COLON_RE, full_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 5) Fallback: loose "BEO #" match in header/footer (rare templates without colon).
+    # 7) Fallback: loose "BEO #" match in header/footer (rare templates without colon).
     m = _matches_from_text(BEO_LOOSE_RE, hf_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
 
-    # 6) Last resort: loose match on page, but ignore lines that look like references/notes.
+    # 8) Last resort: loose match on page, but ignore lines that look like references/notes.
     #    This keeps verification strict while supporting occasional template variations.
     candidates: Set[str] = set()
     for line in (full_text or "").splitlines():
@@ -175,6 +198,15 @@ def split_pdf(
 
     results: List[PageResult] = []
     problem_pages = 0
+    
+    # Detect if this is a Banquet Check document by checking first page
+    is_banquet_check = False
+    if doc.page_count > 0:
+        first_page = doc.load_page(0)
+        is_banquet_check = _is_banquet_check(first_page)
+    
+    # Determine filename prefix
+    file_prefix = "BC_" if is_banquet_check else "BEO_"
 
     for idx in range(doc.page_count):
         page_number = idx + 1
@@ -212,9 +244,9 @@ def split_pdf(
         doc.close()
         return 0, problem_pages, report_path
 
-    # Save per-BEO PDFs
+    # Save per-BEO PDFs with appropriate prefix
     for beo, outdoc in writers.items():
-        out_path = os.path.join(outdir, f"BEO_{beo}.pdf")
+        out_path = os.path.join(outdir, f"{file_prefix}{beo}.pdf")
         outdoc.save(out_path)
         outdoc.close()
 
