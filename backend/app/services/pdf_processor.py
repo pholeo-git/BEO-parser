@@ -41,6 +41,18 @@ async def process_pdf_async(
             stop_on_problems=False,  # Don't stop, just log problems
         )
         
+        # If no BEOs were extracted and there were problem pages, try OCR for scanned PDFs
+        if num_beos == 0 and problem_pages > 0:
+            from app.core.beo_split import run_ocr_if_needed
+            ocr_pdf = run_ocr_if_needed(pdf_file_path, temp_dir)
+            if ocr_pdf:
+                # Retry with OCR'd PDF
+                num_beos, problem_pages, report_path = split_pdf(
+                    input_pdf=ocr_pdf,
+                    outdir=output_dir,
+                    stop_on_problems=False,
+                )
+        
         # Create zip file
         zip_path = os.path.join(temp_dir, f"beos_{submission_id}.zip")
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:

@@ -38,7 +38,7 @@
    SUPABASE_SERVICE_KEY=<from-supabase>
    POSTMARK_API_KEY=<from-postmark>
    POSTMARK_FROM_EMAIL=<your-verified-email>
-   STORAGE_BUCKET_NAME=beo-outputs
+   POSTMARK_FROM_EMAIL=<your-verified-email>
    DOWNLOAD_URL_EXPIRY_DAYS=30
    RATE_LIMIT_PER_HOUR=5
    ```

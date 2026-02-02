@@ -2,6 +2,8 @@
 import csv
 import os
 import re
+import shutil
+import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -261,3 +263,29 @@ def split_pdf(
     doc.close()
 
     return len(writers), problem_pages, report_path
+
+
+def run_ocr_if_needed(input_pdf: str, outdir: str) -> Optional[str]:
+    """
+    Attempts OCR using `ocrmypdf` into outdir/input_ocr.pdf and returns that path.
+    Returns None if ocrmypdf is not available or OCR fails.
+    """
+    ocrmypdf = shutil.which("ocrmypdf")
+    if not ocrmypdf:
+        return None
+    ocr_out = os.path.join(outdir, "input_ocr.pdf")
+    cmd = [
+        ocrmypdf,
+        "--force-ocr",
+        "--skip-text",  # keep existing text, OCR images only when possible
+        input_pdf,
+        ocr_out,
+    ]
+    try:
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    except subprocess.CalledProcessError as e:
+        # Save OCR output log for troubleshooting.
+        with open(os.path.join(outdir, "ocrmypdf.log"), "w", encoding="utf-8") as f:
+            f.write(e.stdout or "")
+        return None
+    return ocr_out
