@@ -77,6 +77,34 @@ def _extract_header_footer_text(page: "fitz.Page", margin_ratio: float = 0.18) -
     return "\n".join(parts)
 
 
+def _extract_upper_left_text(
+    page: "fitz.Page",
+    width_ratio: float = 0.4,
+    height_ratio: float = 0.22,
+) -> str:
+    """
+    Extract text from the upper-left corner of the page only.
+    Continuation pages often have "BEO #: N" only in this region.
+    """
+    rect = page.rect
+    w = float(rect.width) if rect and rect.width else 0.0
+    h = float(rect.height) if rect and rect.height else 0.0
+    if w <= 0 or h <= 0:
+        return ""
+    max_x = w * width_ratio
+    max_y = h * height_ratio
+
+    blocks = page.get_text("blocks") or []
+    parts: List[str] = []
+    for b in blocks:
+        if len(b) < 5 or not isinstance(b[4], str):
+            continue
+        x0, y0, x1, y1 = float(b[0]), float(b[1]), float(b[2]), float(b[3])
+        if x1 <= max_x and y1 <= max_y:
+            parts.append(b[4])
+    return "\n".join(parts)
+
+
 def _matches_from_text(regex: "re.Pattern[str]", text: str) -> Set[str]:
     return set(regex.findall(text or ""))
 
@@ -97,6 +125,7 @@ def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str,
       - AMBIGUOUS: multiple distinct detected (should be reviewed)
     """
     hf_text = _extract_header_footer_text(page)
+    upper_left_text = _extract_upper_left_text(page)
     full_text = _extract_all_text(page)
 
     # 1) Strongest signal: "Banquet Event Order:" in header/footer (common format).
@@ -112,6 +141,21 @@ def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str,
         return next(iter(m)), "OK", m
     if len(m) > 1:
         return None, "AMBIGUOUS", m
+
+    # 2b) "BEO #" / "BEO#:" in upper-left only (continuation pages: "BEO #: N" in corner).
+    #     Same number as "Banquet Event Order" on first page → group together.
+    m_ul = _matches_from_text(BEO_COLON_RE, upper_left_text) | _matches_from_text(
+        BEO_HASH_NO_SPACE_RE, upper_left_text
+    )
+    if len(m_ul) == 1:
+        return next(iter(m_ul)), "OK", m_ul
+    if len(m_ul) > 1:
+        return None, "AMBIGUOUS", m_ul
+    m_ul_loose = _matches_from_text(BEO_LOOSE_RE, upper_left_text)
+    if len(m_ul_loose) == 1:
+        return next(iter(m_ul_loose)), "OK", m_ul_loose
+    if len(m_ul_loose) > 1:
+        return None, "AMBIGUOUS", m_ul_loose
 
     # 3) "BEO#:" (no space) in header/footer - common in Banquet Checks.
     m = _matches_from_text(BEO_HASH_NO_SPACE_RE, hf_text)
@@ -186,9 +230,11 @@ def split_pdf(
     input_pdf: str,
     outdir: str,
     stop_on_problems: bool = False,
+    summary_page_count: int = 3,
 ) -> Tuple[int, int, str]:
     """
     Split a PDF into individual BEO files.
+    First summary_page_count pages are treated as summary (no BEO); they go to UNKNOWN.
     Returns: (num_beos, num_problem_pages, report_path)
     """
     os.makedirs(outdir, exist_ok=True)
@@ -213,6 +259,14 @@ def split_pdf(
     for idx in range(doc.page_count):
         page_number = idx + 1
         page = doc.load_page(idx)
+
+        # First N pages are summary of event orders; do not assign to a BEO.
+        if summary_page_count > 0 and page_number <= summary_page_count:
+            problem_pages += 1
+            unknown_doc.insert_pdf(doc, from_page=idx, to_page=idx)
+            results.append(PageResult(page_number, "UNKNOWN", "", "(summary)"))
+            continue
+
         beo, status, matches = extract_single_beo_from_page(page)
 
         if status == "OK" and beo:
