@@ -16,6 +16,10 @@ import fitz  # PyMuPDF
 # header/footer regions.
 # Banquet Checks often use "BEO#:" (no space between BEO and #)
 BEO_BANQUET_ORDER_RE = re.compile(r"\bBanquet\s+Event\s+Order\s*:\s*(\d{3,})\b", re.IGNORECASE)
+# First page of BEO often has "BANQUET EVENT ORDER" on one line, number on the next (no colon).
+BEO_BANQUET_ORDER_NEXT_LINE_RE = re.compile(
+    r"\bBanquet\s+Event\s+Order\s*:?\s*\n\s*(\d{3,})\b", re.IGNORECASE | re.MULTILINE
+)
 BEO_HASH_NO_SPACE_RE = re.compile(r"\bBEO#\s*:\s*(\d{3,})\b", re.IGNORECASE)  # "BEO#:" no space (Banquet Checks)
 BEO_COLON_RE = re.compile(r"\bBEO\s*#\s*:\s*(\d{3,})\b", re.IGNORECASE)  # "BEO #:" with space
 BEO_LOOSE_RE = re.compile(r"\bBEO\s*#?\s*:?\s*(\d{3,})\b", re.IGNORECASE)
@@ -137,6 +141,18 @@ def extract_single_beo_from_page(page: "fitz.Page") -> Tuple[Optional[str], str,
 
     # 2) "Banquet Event Order:" anywhere on page.
     m = _matches_from_text(BEO_BANQUET_ORDER_RE, full_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+
+    # 2a) "Banquet Event Order" with number on next line (first page of BEO) — header/footer then full page.
+    m = _matches_from_text(BEO_BANQUET_ORDER_NEXT_LINE_RE, hf_text)
+    if len(m) == 1:
+        return next(iter(m)), "OK", m
+    if len(m) > 1:
+        return None, "AMBIGUOUS", m
+    m = _matches_from_text(BEO_BANQUET_ORDER_NEXT_LINE_RE, full_text)
     if len(m) == 1:
         return next(iter(m)), "OK", m
     if len(m) > 1:
